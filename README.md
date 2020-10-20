@@ -8,11 +8,11 @@ I discovered the concept of pair trading and cointegration by accident. But it i
 
 Code layout:
 
-I’ve broken the code into 4 different sections: 
-Getting the data (DataManager.py)
-Analysing the data for cointegration (cointAnalysis.py)
-Creating the strategy (cointStrategy.py)
-And finally, backtesting (backtester.py).
+I’ve broken the code into 4 different sections: <br>
+Getting the data (DataManager.py) <br>
+Analysing the data for cointegration (cointAnalysis.py) <br>
+Creating the strategy (cointStrategy.py) <br>
+And finally, backtesting (backtester.py). <br>
 
 
 
