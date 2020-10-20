@@ -1,6 +1,6 @@
 # tradingPlatform
 
-I've always been interested in stocks and trading but I had never attempted any sort of project in it. So after some reading about different concepts and picking a route I wanted to go down I decided to commit to building a trading platform. What I mean by a trading platform is a system that includes a strategy and a way of backtesting this strategy. And well, I've finally got a working a platform. It's far from perfect, this is only really the beginning but it has a functioning strategy and a backtests it to get details of its performance. 
+I've always been interested in stocks and trading but I had never attempted any sort of project in it. So after some reading about different concepts and picking a route I wanted to go down I decided to commit to building a trading platform. What I mean by a trading platform is a system that includes a strategy and a way of backtesting this strategy. And well, I've finally got a working a platform. It's far from perfect, this is only really the beginning but it has a functioning strategy and a backtester.
 
 What is the strategy used?
 
