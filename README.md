@@ -6,5 +6,15 @@ What is the strategy used?
 
 I discovered the concept of pair trading and cointegration by accident. But it instantly struck me as an interesting introductory project for me as it had a nice amount of statistics in it. I've decided to start off with the most basic form of a cointegration pairs trading strategy I could think of check if a pair is cointegrated over the last n months, if it is then over the next k months, long the spread when it is low, and short the spread when it is high, closing positions as it approaches the mean. 
 
+Code layout:
+
+I’ve broken the code into 4 different sections: 
+Getting the data (DataManager.py)
+Analysing the data for cointegration (cointAnalysis.py)
+Creating the strategy (cointStrategy.py)
+And finally, backtesting (backtester.py).
+
+
+
 For more details about a similar strategy see this video:
 https://www.quantopian.com/lectures/introduction-to-pairs-trading
