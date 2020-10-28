@@ -28,7 +28,7 @@ def subtract_time(starting, day=0, month=0, year=0):
     return (datetime.strptime(starting, format)
             - relativedelta(months=month, days=day, years=year)).strftime(format)
 
-def calc_diff(starting, ending):
+def calc_diff(starting, ending, type='days'):
     """
     Calcualtes the number of days between 2 dates
     :param starting: start date
@@ -36,4 +36,11 @@ def calc_diff(starting, ending):
     :return: the difference between the dates in days
     """
     # Note the cheeky minus at the beginning
-    return -(datetime.strptime(starting, format) - datetime.strptime(ending, format)).days
+    if type == 'days':
+        return (datetime.strptime(ending, format) - datetime.strptime(starting, format)).days
+    if type == 'weeks':
+        return round((datetime.strptime(ending, format) - datetime.strptime(starting, format)).days / 7)
+    if type == 'months':
+        return (datetime.strptime(ending, format).year - datetime.strptime(starting, format).year) * 12 \
+               + (datetime.strptime(ending, format).month - datetime.strptime(starting, format).month)
+

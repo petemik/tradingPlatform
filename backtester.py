@@ -10,17 +10,19 @@ from dateutil.relativedelta import relativedelta
 # from statsmodels.regression.linear_model import sm.OLS
 import statsmodels.api as sm
 from cointStrategy import CointStrategy
+from cointStratStopLoss import CointStrategyStopLoss
 from utils import calc_diff
 
 
 class Backtester:
     def __init__(self, strat, portfolio):
         """
-        This is the function that actually backtests the strategy to see how it would have done over a given period
+        This is the function that actually backtests the strategy to see how it would have done over a given period.
+        Effectively only generates returns and what transactions are made
         :param strat: This is the strategy to backtested
         :param portfolio: The portfolio to run the backtest on
         """
-        self.strat = strat
+
         self.portfolio = portfolio
         self.format = "%Y-%m-%d"
         self.startPortfolio = portfolio[list(portfolio.keys())[0]].index[0]
@@ -28,8 +30,9 @@ class Backtester:
 
         # This strat output should be a dict with key the name of pair of pairdfs where pairdfs are dataframes with
         # columns={Date, open1, open2, close1, close2, p} where p is the signals
-        self.params = {'lookback': 24, 'lookforward': 12}
-        self.strat_output = self.strat(self.portfolio, params=self.params).generateSignals()
+        self.params = {'lookback': 10, 'lookforward': 4, 'critValue': 0.005, 'buy_cutoff': 2, 'sell_cutoff': 0.5}
+        self.strat = strat(self.portfolio, params=self.params)
+        self.strat_output = self.strat.generateSignals()
         self.beta = None
         self.open_pos = None
         self.entry_price = None
@@ -37,6 +40,8 @@ class Backtester:
         self.close_price = None
         self.returns_dict = {}
         self.trans_dict = {}
+        self.combined_returns = None
+        self.total_returns = None
 
     def reset_vars(self):
         """
@@ -122,21 +127,40 @@ class Backtester:
                 self.reset_vars()
 
             self.returns_dict[pair] = self.return_df
+            self.merge_returns()
             self.trans_dict[pair] = self.trans_df
 
+    def plot_stuff(self):
+        self.strat.naughty_plot()
 
-
+    def merge_returns(self):
+        combined_returns = bt.returns_dict[list(bt.returns_dict.keys())[0]]
+        skip_first = 0
+        for pair, df in self.returns_dict.items():
+            if skip_first == 0:
+                skip_first = 1
+                continue
+            combined_returns = pd.concat([combined_returns, df], ignore_index=True, axis=0)
+        self.combined_returns = combined_returns
+        self.total_returns = 1
+        for returns in combined_returns['returns'].values:
+            self.total_returns = self.total_returns * (1 + returns)
 
 if __name__ == "__main__":
-    x = DataManager()
+    dm = DataManager()
     # This code will just do it for one sector
     # x.data = x.getOneSector(sector="Energy", fromDate="2015-01-01", toDate="2016-09-21")
-    x.getOneSector(sector="Energy", fromDate="2014-01-01", toDate="2018-01-01")
+    dm.getOneSector(sector="Energy", fromDate="2013-01-01", toDate="2015-01-01")
     # x.calcReturns()
 
-    strat = CointStrategy
-    bt = Backtester(strat, x.data)
+    strat = CointStrategyStopLoss
+    bt = Backtester(strat, dm.data)
     bt.backtest()
+    bt.plot_stuff()
+    # bt.strat.CA.plot_pair(['MA','V'], fromDate="2014-01-01", toDate="2018-01-01")
+    print(bt.total_returns)
+    plt.show()
+
     # This is just here so i can set a breakpoint and dig into the data.
     print("HI")
 

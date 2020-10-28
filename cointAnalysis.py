@@ -2,15 +2,21 @@ from DataManager import DataManager
 from statsmodels.tsa.stattools import coint, adfuller
 import matplotlib.pyplot as plt
 import numpy as np
+import os
+import sys
 import statsmodels.api as sm
 from scipy.stats import poisson, zscore
 import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 # from statsmodels.regression.linear_model import sm.OLS
+from statsmodels.regression.rolling import RollingOLS
 import statsmodels.api as sm
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
 import matplotlib.pyplot as plt
+import time
+from utils import add_time, subtract_time, calc_diff
+import winsound
 
 
 class CointAnalysis():
@@ -41,6 +47,7 @@ class CointAnalysis():
         :param usead: I tested other cointegration methods and this allows you to adjust which one to use
         :return: The dataframe of (symbol1, symbol2, pvalue), so the 2 cointegrated stocks and the certainty of which they are cointegrated
         """
+        start_time = time.time()
         num_stocks = len(self.portfolio)
         keys = list(self.portfolio.keys())
         df = pd.DataFrame(columns=('symbol1', 'symbol2', 'pvalue'))
@@ -51,6 +58,8 @@ class CointAnalysis():
                 model = sm.OLS(data1, sm.add_constant(data2))
                 results = model.fit()
                 spread = data1 - results.params[1] * data2 - results.params[0]
+                if results.params[1] < 0:
+                    continue
                 try:
                     if not usead:
                         result = coint(data1, data2)
@@ -75,8 +84,39 @@ class CointAnalysis():
 
         df = df.sort_values(by='pvalue', ignore_index=True)
         self.cointStocks = df
+        print("checkPortfolioForCoint took {} seconds".format(time.time()-start_time))
         if calcMean == False:
             return df
+
+    def return_pvalues_portfolio(self, fromDate="2015-01-01", toDate="2020-09-21"):
+        """
+        This is one of the most useful function in this class
+        :param critValue: The critical value of which to judge things are cointegrated, equivalent to the p value cut off
+        :param fromDate: The date to start the check of cointegration test from
+        :param toDate: The date to end the check of cointegration test
+        :param calcMean: Sometimes it is handy to return the mean of the cointegrated data, this gives a boolean for doing that
+        :param usead: I tested other cointegration methods and this allows you to adjust which one to use
+        :return: The dataframe of (symbol1, symbol2, pvalue), so the 2 cointegrated stocks and the certainty of which they are cointegrated
+        """
+        start_time = time.time()
+        num_stocks = len(self.portfolio)
+        keys = list(self.portfolio.keys())
+        df = pd.DataFrame(columns=('symbol1', 'symbol2', toDate))
+        for i in range(num_stocks):
+            for j in range(i + 1, num_stocks):
+                data1 = self.portfolio[keys[i]][self.analysisOn][fromDate:toDate]
+                data2 = self.portfolio[keys[j]][self.analysisOn][fromDate:toDate]
+                try:
+                    result = coint(data1, data2)
+                except:
+                    print("Cannot calculate coint for {}, {}".format(keys[i], keys[j]))
+                    continue
+                pvalue = result[1]
+                df = df.append({'symbol1': keys[i], 'symbol2': keys[j], toDate: pvalue},
+                                   ignore_index=True)
+
+        print("return_pvalues_portfolio took {} seconds".format(time.time()-start_time))
+        return df
 
     def check_significance(self, num_pairs, critValue, cut_off=0.10):
         """
@@ -353,24 +393,118 @@ class CointAnalysis():
         axs[1].xaxis.set_major_locator(plt.MaxNLocator(15))
         plt.show()
 
+    def playing_with_rolling(self, pair, fromDate="2015-01-01", toDate="2018-01-01"):
+        symbol1 = pair[0]
+        symbol2 = pair[1]
+        data1 = self.portfolio[symbol1][self.analysisOn][fromDate:toDate]
+        data2 = self.portfolio[symbol2][self.analysisOn][fromDate:toDate]
+        model = sm.OLS(data1, sm.add_constant(data2))
+        window = 180
+        model2 = RollingOLS(data1, sm.add_constant(data2), window=window)
+        results = model.fit()
+        results2 = model2.fit()
+        # spread = data1 - results.params[1] * data2 - results.params[0]
+        # spread_rolling = data1 - results2.params.adjusted_close * data2 - results2.params.const
+        spread = data1 - results.params[1] * data2
+        spread_rolling = data1 - results2.params.adjusted_close * data2
+        spread_mean = pd.Series(spread_rolling).rolling(window=window).mean()
+        spread_std = pd.Series(spread_rolling).rolling(window=window).std()
+        fig, axs = plt.subplots(2)
+        # plt.plot((spread - spread.mean())/spread.std())
+        axs[0].plot((spread_rolling-spread_mean)/spread_std)
+        axs[0].xaxis.set_major_locator(plt.MaxNLocator(15))
+        axs[1].plot(results2.params.adjusted_close['2013-03-15':])
+        axs[1].xaxis.set_major_locator(plt.MaxNLocator(15))
+        # plt.plot(spread)
+        # plt.plot(spread_rolling)
+        plt.show()
+
+    def generateCointegratedPairs(self, fromDate, toDate, cointOver=4, lookback=True):
+        """
+        This should return a dataframe with dates down the left and all pairs across the top, with a boolean of 0 if
+        the pairs are not cointegrated over the time period looking backward, 1 if they are cointegrated over the time period
+        :param fromDate: Date to start calculation of cointover
+        :param toDate: date to end calculation of cointover
+        :param cointOver:The number of months to test if something is cointegrated over. Too long and it likely breaks, too short and it doesn't have enough
+        :return: The dataframe described above
+        """
+        if lookback:
+            lookback_str = 'lookback'
+        else:
+            lookback_str = 'lookforward'
+        monthsDiff = calc_diff(fromDate, toDate, type='months')
+        array_of_end_dates = []
+
+        for i in range(0, monthsDiff+1):
+            array_of_end_dates.append(add_time(fromDate, month=i))
+        columns = ['symbol1', 'symbol2'] + array_of_end_dates
+        df = pd.DataFrame(columns=columns)
+        if lookback:
+            current_p_values = self.return_pvalues_portfolio(fromDate=subtract_time(fromDate, month=cointOver), toDate=fromDate)
+        else:
+            current_p_values = self.return_pvalues_portfolio(fromDate=fromDate,
+                                                             toDate=add_time(fromDate, month=cointOver))
+        df['symbol1'] = current_p_values['symbol1']
+        df['symbol2'] = current_p_values['symbol2']
+        df[fromDate] = current_p_values[add_time(fromDate, month=cointOver)]
+        for current_date in array_of_end_dates:
+            if current_date == fromDate:
+                continue
+            if lookback:
+                current_p_values = self.return_pvalues_portfolio(fromDate=subtract_time(current_date, month=cointOver),
+                                                             toDate=current_date)
+            else:
+                current_p_values = self.return_pvalues_portfolio(fromDate=current_date,
+                                                                 toDate=add_time(current_date, month=cointOver))
+            df[current_date] = current_p_values[add_time(current_date, month=cointOver)]
+            print("{} data stored for {} {}".format(current_date, cointOver, lookback_str))
+        return df
+
+    def saveCointegratedPairs(self, fromDate, toDate, lookback=True, cointOverArray=np.arange(4, 14, 2)):
+        if lookback:
+            lookback_str = 'lookback'
+        else:
+            lookback_str = 'lookforward'
+        modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
+        for i in cointOverArray:
+            df = self.generateCointegratedPairs(fromDate=fromDate, toDate=toDate, cointOver=i, lookback=lookback)
+            df.to_csv(modpath + "\Data\cointegratedPair\\" + lookback_str + "\\" + str(i) + "month" + ".csv")
+            print("Successfully saved the {} month data".format(i))
+
+    def saveBoth(self, fromDate, toDate, lookbackArray=None, lookforwardArray=None):
+        if lookforwardArray is None:
+            lookforwardArray = [4, 6, 8, 12]
+        if lookbackArray is None:
+            lookbackArray = np.arange(4, 14, 2)
+        self.saveCointegratedPairs(fromDate=fromDate, toDate=toDate, lookback=False, cointOverArray=lookbackArray)
+        self.saveCointegratedPairs(fromDate=fromDate, toDate=toDate, lookback=True, cointOverArray=lookforwardArray)
+
+
+
 
 if __name__ == "__main__":
     # This is all a bit of a mess but I'll leave it in so people can see how some of these functions work
 
     x = DataManager()
-    # This code will just do it for one sector
-    # x.data = x.getOneSector(sector="Energy", fromDate="2015-01-01", toDate="2016-09-21")
-    x.getOneSector(sector="Energy", fromDate="2012-01-01", toDate="2020-09-21")
-    x.calcReturns()
-    # Adjust this to avoid multiple comparison bias
-    critValue = 0.01
+    # # This code will just do it for one sector
+    x.getOneSector(sector="Energy", fromDate="2011-01-01", toDate="2020-09-21")
+    # x.calcReturns()
+    # # Adjust this to avoid multiple comparison bias
+    # critValue = 0.005
     cointAnalysis = CointAnalysis(x.data)
-    cointAnalysis.rolling_z_score(['APA', 'NBL'], fromDate="2015-01-01", toDate="2016-06-01", )
-    cointPairs1 = cointAnalysis.checkPortfolioForCoint(0.005, fromDate="2015-01-01", toDate="2016-06-01", usead=False)
-    # cointAnalysis.plot_pairs(cointPairs1, fromDate="2015-01-01", toDate="2016-01-01")
+    # #cointAnalysis.playing_with_rolling(['APA', 'NBL'], fromDate="2010-01-01", toDate="2020-00-01", )
+    # cointPairs1 = cointAnalysis.checkPortfolioForCoint(critValue=critValue, fromDate="2016-01-01", toDate="2016-04-01", usead=False)
+    # #cointAnalysis.plot_pairs(cointPairs1, fromDate="2015-01-01", toDate="2016-06-01")
+    # cointAnalysis.plot_pairs(cointPairs1, fromDate="2016-01-01", toDate="2016-04-01")
+    # plt.show()
     # cointAnalysis.plot_pairs(cointPairs2, fromDate="2015-01-01", toDate="2016-01-01")
     # cointAnalysis.mean_reversion_rolling(pair=['APA', 'NBL'], fromDate="2015-01-01", toDate="2020-01-01")
     # cointAnalysis.plot_various_p_and_z_score(pair=['DVN', 'EOG'], fromDate="2014-01-01", toDate="2016-06-01")
     # cointAnalysis.plot_pair(pair=['APA', 'NBL'], fromDate="2015-01-01", toDate="2018-01-01")
     # plt.show()
-    print("hi")
+    # cointAnalysis.generateCointegratedPairs('2014-01-01', '2014-04-01')
+    cointAnalysis.saveCointegratedPairs(fromDate='2014-01-01', toDate='2017-01-01', lookback=False)
+
+    duration = 500  # milliseconds
+    freq = 440  # Hz
+    winsound.Beep(freq, duration)
